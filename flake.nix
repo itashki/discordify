@@ -8,6 +8,9 @@
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in {
+      nixosModules.default = ./nix/module.nix;
+      nixosModules.discordify = self.nixosModules.default;
+
       packages = forAllSystems (system:
         let pkgs = import nixpkgs { inherit system; };
         in {

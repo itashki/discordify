@@ -8,35 +8,80 @@
 ## Nix
 
 ```sh
-nix build path:.
-nix run path:. -- --limit-mb 20 -- /path/to/video.mkv
+nix build github:itashki/discordify
+nix run github:itashki/discordify -- --limit-mb 20 -- /path/to/video.mkv
 ```
 
-`path:.` позволяет собирать проект до добавления файлов в Git. После добавления
-файлов можно использовать `nix build` и `nix run`. Для закрепления nixpkgs:
-
-```sh
-nix flake lock path:.
-```
+Nix скачивает исходники автоматически; клонировать репозиторий вручную не нужно.
 
 Пакет включает FFmpeg и libnotify в PATH обёртки, устанавливает меню в
 `share/kio/servicemenus` и прописывает абсолютный путь к бинарнику из Nix store.
 Отдельный `package.nix` можно подключить через `pkgs.callPackage ./package.nix {}`.
 
-Для установки в NixOS добавьте в конфигурацию (путь замените на свой):
+### NixOS с flakes
+
+Добавьте input и модуль в системный `flake.nix` (сохраните свои hostname,
+архитектуру и остальные модули):
 
 ```nix
-environment.systemPackages = [
-  (pkgs.callPackage /path/to/discordify/package.nix {})
-];
+{
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.discordify.url = "github:itashki/discordify";
+  inputs.discordify.inputs.nixpkgs.follows = "nixpkgs";
+
+  outputs = { nixpkgs, discordify, ... }: {
+    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ./configuration.nix
+        discordify.nixosModules.default
+        { programs.discordify.enable = true; }
+      ];
+    };
+  };
+}
 ```
 
-Для Home Manager:
+Примените конфигурацию из её каталога:
+
+```sh
+sudo nixos-rebuild switch --flake .#my-host
+```
+
+Версия Discordify закрепляется в системном `flake.lock`. Для обновления:
+
+```sh
+nix flake update discordify
+sudo nixos-rebuild switch --flake .#my-host
+```
+
+### NixOS без flakes
+
+Добавьте в `configuration.nix`:
 
 ```nix
-home.packages = [
-  (pkgs.callPackage /path/to/discordify/package.nix {})
-];
+{ ... }:
+{
+  imports = [
+    "${builtins.fetchTarball "https://github.com/itashki/discordify/archive/refs/heads/master.tar.gz"}/nix/module.nix"
+  ];
+  programs.discordify.enable = true;
+}
+```
+
+Примените через `sudo nixos-rebuild switch`. Для воспроизводимой установки
+замените `refs/heads/master` в URL на SHA выбранного коммита.
+
+### Home Manager
+
+При использовании flakes передайте input `discordify` в модуль Home Manager
+через `extraSpecialArgs = { inherit discordify; };`, затем:
+
+```nix
+{ pkgs, discordify, ... }:
+{
+  home.packages = [ discordify.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+}
 ```
 
 После применения конфигурации перезапустите Dolphin. В контекстном меню
