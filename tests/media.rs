@@ -22,6 +22,32 @@ impl Fixture {
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
 
 #[test]
+fn messages_follow_locale_precedence() {
+    for (all, messages, lang, russian) in [
+        ("C", "ru_RU.UTF-8", "ru_RU.UTF-8", false),
+        ("ru_RU.UTF-8", "en_US.UTF-8", "en_US.UTF-8", true),
+        ("", "ru_RU.UTF-8", "en_US.UTF-8", true),
+        ("", "", "ru_RU.UTF-8", true),
+        ("", "", "en_US.UTF-8", false),
+        ("", "", "de_DE.UTF-8", false),
+        ("", "", "", false),
+    ] {
+        for (argument, expected, success) in [
+            ("--help", if russian { "По умолчанию лимит 10" } else { "Default limit: 10" }, true),
+            ("--unknown", if russian { "Неизвестный параметр" } else { "Unknown option" }, false),
+            ("--limit-mb", if russian { "Некорректный лимит" } else { "Invalid size limit" }, false),
+        ] {
+            let output = Command::new(env!("CARGO_BIN_EXE_discordify"))
+                .env("LC_ALL", all).env("LC_MESSAGES", messages).env("LANG", lang)
+                .arg(argument).output().unwrap();
+            assert_eq!(output.status.success(), success);
+            let text = if success { &output.stdout } else { &output.stderr };
+            assert!(String::from_utf8_lossy(text).contains(expected), "locale: {all}/{messages}/{lang}");
+        }
+    }
+}
+
+#[test]
 fn default_limit_compresses_files_over_ten_mb() {
     let f = Fixture::new("default-limit");
     let input = f.generate("large.bmp", &["-f", "lavfi", "-i", "testsrc=size=2048x2048", "-frames:v", "1"]);

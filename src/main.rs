@@ -1,5 +1,21 @@
 use std::{env, fs, io::{BufRead, BufReader, Read}, path::{Path, PathBuf}, process::{Command, Stdio}, time::Instant};
 
+
+fn russian_locale() -> bool {
+    static RUSSIAN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *RUSSIAN.get_or_init(|| {
+        ["LC_ALL", "LC_MESSAGES", "LANG"].iter()
+            .find_map(|key| env::var(key).ok().filter(|value| !value.is_empty()))
+            .is_some_and(|locale| locale == "ru" || locale.starts_with("ru_") || locale.starts_with("ru."))
+    })
+}
+
+macro_rules! tr {
+    ($en:literal, $ru:literal) => {
+        if russian_locale() { $ru } else { $en }
+    };
+}
+
 type Result<T> = std::result::Result<T, String>;
 
 #[derive(Default)]
@@ -24,8 +40,8 @@ impl Notifications {
 
 fn probe(path: &Path) -> Result<(u32, u32, f64, bool, bool)> {
     let output = Command::new("ffprobe").args(["-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,nb_frames:format=duration,format_name", "-of", "default=noprint_wrappers=1"])
-        .arg(path).output().map_err(|e| format!("Не удалось запустить ffprobe: {e}"))?;
-    if !output.status.success() { return Err("Не удалось прочитать медиафайл".into()); }
+        .arg(path).output().map_err(|e| if russian_locale() { format!("Не удалось запустить ffprobe: {e}") } else { format!("Failed to start ffprobe: {e}") })?;
+    if !output.status.success() { return Err(tr!("Failed to read the media file", "Не удалось прочитать медиафайл").into()); }
     let mut width = 0; let mut height = 0; let mut duration = 0.; let mut audio = false; let mut animated = false;
     for line in String::from_utf8_lossy(&output.stdout).lines() {
         if let Some((key, value)) = line.split_once('=') {
@@ -40,13 +56,13 @@ fn probe(path: &Path) -> Result<(u32, u32, f64, bool, bool)> {
             }
         }
     }
-    if width == 0 || height == 0 { return Err("В файле нет изображения или видео".into()); }
+    if width == 0 || height == 0 { return Err(tr!("The file contains no image or video", "В файле нет изображения или видео").into()); }
     Ok((width, height, duration, audio, animated))
 }
 
 fn encode(args: &[String], duration: f64, notice: &mut Notifications, label: &str) -> Result<()> {
     let mut child = Command::new("ffmpeg").args(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-progress", "pipe:1"])
-        .args(args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("Не удалось запустить ffmpeg: {e}"))?;
+        .args(args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| if russian_locale() { format!("Не удалось запустить ffmpeg: {e}") } else { format!("Failed to start ffmpeg: {e}") })?;
     let stderr = child.stderr.take().unwrap();
     let errors = std::thread::spawn(move || {
         let mut tail = Vec::new();
@@ -77,17 +93,17 @@ impl Drop for Temp { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
 
 fn process(path: &Path, limit: u64, notice: &mut Notifications) -> Result<PathBuf> {
     let path = fs::canonicalize(path).map_err(|e| e.to_string())?;
-    if !path.is_file() { return Err("Нужен обычный файл".into()); }
+    if !path.is_file() { return Err(tr!("Expected a regular file", "Нужен обычный файл").into()); }
     let (width, height, duration, audio, animated) = probe(&path)?;
     if fs::metadata(&path).map_err(|e| e.to_string())?.len() <= limit { return Ok(path); }
     let name = path.file_name().unwrap().to_string_lossy();
-    let label = format!("Сжатие {name}");
+    let label = if russian_locale() { format!("Сжатие {name}") } else { format!("Compressing {name}") };
     notice.show(&label, Some(0), false);
     let ext = path.extension().unwrap_or_default().to_string_lossy().to_lowercase();
     // Animated formats are encoded as video to retain their animation.
     let image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tif" | "tiff" | "avif" | "heic") && duration <= 0. && !animated;
     if !image && (!duration.is_finite() || duration <= 0.) {
-        return Err("Не удалось определить длительность видео (в том числе анимации)".into());
+        return Err(tr!("Could not determine the video or animation duration", "Не удалось определить длительность видео (в том числе анимации)").into());
     }
     let parent = path.parent().unwrap();
     let temp = Temp(parent.join(format!(".discordify-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())));
@@ -107,7 +123,7 @@ fn process(path: &Path, limit: u64, notice: &mut Notifications) -> Result<PathBu
         } else {
             let total_rate = (budget as f64 * 8. / duration) as u64;
             let audio_rate = if audio { (total_rate / 5).clamp(16000, 128000) } else { 0 };
-            if total_rate < audio_rate + 12000 { return Err("Слишком длинное видео для выбранного лимита. Увеличьте лимит или обрежьте видео".into()); }
+            if total_rate < audio_rate + 12000 { return Err(tr!("The video is too long for this size limit. Increase the limit or trim the video", "Слишком длинное видео для выбранного лимита. Увеличьте лимит или обрежьте видео").into()); }
             let video_rate = total_rate - audio_rate;
             let max_height = if video_rate < 150000 { 240 } else if video_rate < 400000 { 360 } else if video_rate < 1000000 { 480 } else if video_rate < 2500000 { 720 } else { 1080 };
             let scale = (max_height as f64 / height as f64).min(1.);
@@ -117,7 +133,7 @@ fn process(path: &Path, limit: u64, notice: &mut Notifications) -> Result<PathBu
             let passlog = temp.0.join("pass").to_string_lossy().into_owned();
             let mut first = args.clone();
             first.extend(["-an".into(), "-pass".into(), "1".into(), "-passlogfile".into(), passlog.clone(), "-f".into(), "null".into(), "/dev/null".into()]);
-            encode(&first, duration, notice, &format!("{label}, анализ"))?;
+            encode(&first, duration, notice, &if russian_locale() { format!("{label}, анализ") } else { format!("{label}, analysis") })?;
             args.extend(["-pass".into(), "2".into(), "-passlogfile".into(), passlog]);
             if audio { args.extend(["-map".into(), "0:a:0".into(), "-c:a".into(), "aac".into(), "-b:a".into(), audio_rate.to_string()]); }
             args.extend(["-movflags".into(), "+faststart".into()]);
@@ -133,14 +149,14 @@ fn process(path: &Path, limit: u64, notice: &mut Notifications) -> Result<PathBu
                 match fs::hard_link(&output, &destination) {
                     Ok(()) => return Ok(destination),
                     Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                    Err(e) => return Err(format!("Не удалось сохранить результат: {e}")),
+                    Err(e) => return Err(if russian_locale() { format!("Не удалось сохранить результат: {e}") } else { format!("Failed to save the result: {e}") }),
                 }
             }
-            return Err("Слишком много файлов с таким именем".into());
+            return Err(tr!("Too many files with this name", "Слишком много файлов с таким именем").into());
         }
         budget = (budget as f64 * limit as f64 / size.max(1) as f64 * 0.9) as u64;
     }
-    Err("Не удалось уложиться в лимит после 8 попыток".into())
+    Err(tr!("Could not meet the size limit after 8 attempts", "Не удалось уложиться в лимит после 8 попыток").into())
 }
 
 fn main() {
@@ -153,19 +169,19 @@ fn main() {
         if !positional && arg == "--" { positional = true; }
         else if !positional && arg == "--notify" { notice.enabled = true; }
         else if !positional && arg == "--limit-mb" {
-            limit = args.next().and_then(|v| v.to_str().and_then(|s| s.parse::<f64>().ok())).filter(|n| n.is_finite() && *n >= 0.001 && *n <= 100000.).unwrap_or_else(|| { eprintln!("Некорректный лимит МБ"); std::process::exit(2) });
+            limit = args.next().and_then(|v| v.to_str().and_then(|s| s.parse::<f64>().ok())).filter(|n| n.is_finite() && *n >= 0.001 && *n <= 100000.).unwrap_or_else(|| { eprintln!("{}", tr!("Invalid size limit in MB", "Некорректный лимит МБ")); std::process::exit(2) });
         } else if !positional && (arg == "--help" || arg == "-h") {
-            println!("discordify [--notify] [--limit-mb 10] -- FILE...\nПо умолчанию лимит 10 десятичных МБ. Оригиналы сохраняются; результат рядом с исходным файлом."); return;
+            println!("{}", tr!("discordify [--notify] [--limit-mb 10] -- FILE...\nDefault limit: 10 decimal MB. Originals are preserved; output is saved next to the input file.", "discordify [--notify] [--limit-mb 10] -- FILE...\nПо умолчанию лимит 10 десятичных МБ. Оригиналы сохраняются; результат рядом с исходным файлом.")); return;
         } else if !positional && arg.to_string_lossy().starts_with('-') {
-            eprintln!("Неизвестный параметр: {}", arg.to_string_lossy()); std::process::exit(2);
+            eprintln!("{}: {}", tr!("Unknown option", "Неизвестный параметр"), arg.to_string_lossy()); std::process::exit(2);
         } else { files.push(PathBuf::from(arg)); }
     }
-    if files.is_empty() { eprintln!("Укажите файлы. Справка: discordify --help"); std::process::exit(2); }
+    if files.is_empty() { eprintln!("{}", tr!("Specify files. Help: discordify --help", "Укажите файлы. Справка: discordify --help")); std::process::exit(2); }
     let mut failed = false;
     for file in files {
         notice.id = None;
         match process(&file, (limit * 1_000_000.) as u64, &mut notice) {
-            Ok(result) => notice.show(&format!("Готово: {}", result.display()), None, false),
+            Ok(result) => notice.show(&if russian_locale() { format!("Готово: {}", result.display()) } else { format!("Done: {}", result.display()) }, None, false),
             Err(error) => { notice.show(&format!("{}: {error}", file.display()), None, true); failed = true; }
         }
     }

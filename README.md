@@ -1,27 +1,31 @@
 # Discordify
 
-Локальная подготовка изображений и видео к отправке в Discord. Один бинарник
-на Rust без сторонних Rust-библиотек; во время работы нужны FFmpeg/ffprobe,
-а для уведомлений — `notify-send` из libnotify. Python, Konsole и диалоговые окна
-не используются. Файлы никуда не загружаются.
+Prepare images and videos for Discord directly from Dolphin. One context menu
+entry compresses files to **10 MB**, keeping originals untouched. Everything runs
+locally; no files are uploaded.
+
+Discordify is a Rust binary with no third-party Rust dependencies. It uses
+FFmpeg/ffprobe for media processing and libnotify's `notify-send` for desktop
+notifications. No terminal window or dialogs are opened by the Dolphin action.
 
 ## Nix
+
+Build or run directly from GitHub, without manually cloning the repository:
 
 ```sh
 nix build github:itashki/discordify
 nix run github:itashki/discordify -- -- /path/to/video.mkv
 ```
 
-Nix скачивает исходники автоматически; клонировать репозиторий вручную не нужно.
+The package wraps the executable with FFmpeg and libnotify on PATH, installs the
+Dolphin service menu into `share/kio/servicemenus`, and sets its executable path
+to the installed binary in the Nix store. The standalone `package.nix` is also
+available through `pkgs.callPackage ./package.nix {}`.
 
-Пакет включает FFmpeg и libnotify в PATH обёртки, устанавливает меню в
-`share/kio/servicemenus` и прописывает абсолютный путь к бинарнику из Nix store.
-Отдельный `package.nix` можно подключить через `pkgs.callPackage ./package.nix {}`.
+### NixOS with flakes
 
-### NixOS с flakes
-
-Добавьте input и модуль в системный `flake.nix` (сохраните свои hostname,
-архитектуру и остальные модули):
+Add the input and module to your system's `flake.nix`. Keep your own hostname,
+architecture, and other modules:
 
 ```nix
 {
@@ -42,22 +46,22 @@ Nix скачивает исходники автоматически; клони
 }
 ```
 
-Примените конфигурацию из её каталога:
+Apply from your configuration directory:
 
 ```sh
 sudo nixos-rebuild switch --flake .#my-host
 ```
 
-Версия Discordify закрепляется в системном `flake.lock`. Для обновления:
+Your system's `flake.lock` pins the Discordify revision. To update:
 
 ```sh
 nix flake update discordify
 sudo nixos-rebuild switch --flake .#my-host
 ```
 
-### NixOS без flakes
+### NixOS without flakes
 
-Добавьте в `configuration.nix`:
+Add to `configuration.nix`:
 
 ```nix
 { ... }:
@@ -69,13 +73,13 @@ sudo nixos-rebuild switch --flake .#my-host
 }
 ```
 
-Примените через `sudo nixos-rebuild switch`. Для воспроизводимой установки
-замените `refs/heads/master` в URL на SHA выбранного коммита.
+Apply with `sudo nixos-rebuild switch`. For a reproducible installation, replace
+`refs/heads/master` in the URL with a specific commit SHA.
 
 ### Home Manager
 
-При использовании flakes передайте input `discordify` в модуль Home Manager
-через `extraSpecialArgs = { inherit discordify; };`, затем:
+With flakes, pass the `discordify` input to your Home Manager module using
+`extraSpecialArgs = { inherit discordify; };`, then add:
 
 ```nix
 { pkgs, discordify, ... }:
@@ -84,10 +88,15 @@ sudo nixos-rebuild switch --flake .#my-host
 }
 ```
 
-После применения конфигурации перезапустите Dolphin. В контекстном меню
-изображения/видео появится «Подготовить для Discord»: один пункт, который сжимает файлы до 10 МБ. При необходимости включите меню в настройках Dolphin → Контекстное меню.
-Для Home Manager каталог `~/.nix-profile/share` должен входить в `XDG_DATA_DIRS`
-сеанса KDE. Если меню не обнаруживается, можно установить локальную копию:
+### Dolphin integration
+
+Restart Dolphin after applying your configuration. Right-click an image or video
+and choose **Prepare for Discord**. There is a single action with a 10 MB limit.
+If necessary, enable it in Dolphin Settings → Context Menu.
+
+For Home Manager installations, `~/.nix-profile/share` must be included in your
+KDE session's `XDG_DATA_DIRS`. If Dolphin cannot find the menu, build the package
+with `nix build github:itashki/discordify` and install a local copy:
 
 ```sh
 mkdir -p ~/.local/share/kio/servicemenus
@@ -95,37 +104,51 @@ cp result/share/kio/servicemenus/discordify.desktop ~/.local/share/kio/serviceme
 chmod +x ~/.local/share/kio/servicemenus/discordify.desktop
 ```
 
-Локальная копия содержит путь в store: после обновления пакета скопируйте её снова.
-Для постоянной установки предпочтительнее NixOS или Home Manager.
+This copy contains a Nix store path, so copy it again after package updates.
+Prefer NixOS or Home Manager for a permanent installation.
 
-## Использование
+## Usage
 
 ```sh
 discordify --notify -- video.mkv image.png
 ```
 
-По умолчанию лимит 10 десятичных МБ (10 000 000 байт).
-Лимиты Discord могут меняться и зависеть от подписки/сервера:
-[справка Discord](https://support.discord.com/hc/en-us/articles/25444343291031-File-Attachments-FAQ).
-Параметр `--limit-mb` принимает также дробные значения.
+The default limit is 10 decimal MB (10,000,000 bytes). Discord upload limits can
+vary by subscription and server; see the
+[Discord attachment FAQ](https://support.discord.com/hc/en-us/articles/25444343291031-File-Attachments-FAQ).
+The optional CLI flag `--limit-mb` also accepts fractional values.
 
-Файлы в пределах лимита остаются без изменений. Для больших файлов рядом
-создаются `имя.discord.mp4` или `имя.discord.webp`; существующие файлы и оригиналы
-не перезаписываются. Видео: H.264/AAC, два прохода, подбор битрейта и разрешения.
-Статичные изображения: WebP с постепенным снижением качества/разрешения.
-GIF и другие читаемые FFmpeg анимации с известной длительностью превращаются в MP4.
-У анимаций MP4 нет прозрачности; поддержка анимированного WebP/APNG зависит от FFmpeg.
-Если FFmpeg не может прочитать анимацию или длительность, приложение сообщает ошибку.
-При очень маленьком лимите/длинном видео приложение может отказаться от сжатия.
+Files already within the limit are left untouched. Larger files produce
+`name.discord.mp4` or `name.discord.webp` alongside the original. Existing files
+are never overwritten; numbered suffixes are used when necessary.
 
-Итоговый размер проверяется перед сохранением. Обработка идёт последовательно.
-В уведомлениях KDE обновляется прогресс текущего прохода примерно раз в две секунды;
-после завершения показывается путь к результату. Требуется работающий сервис
-уведомлений в пользовательском сеансе. Без `--notify` сообщения идут в stderr.
-Прерывание в терминале: Ctrl+C (при принудительном завершении временный каталог
-`.discordify-*` может остаться рядом с исходным файлом).
+- Videos use two-pass H.264/AAC encoding with bitrate and resolution adjustment.
+- Still images use WebP with progressively reduced quality and resolution.
+- GIFs and other FFmpeg-readable animations with a known duration become MP4.
+  MP4 animation output has no transparency. Animated WebP/APNG support depends
+  on FFmpeg. Unreadable animations or unknown durations produce an error.
 
-## Разработка и проверка
+Output size is checked before saving. Very long videos or very small custom
+limits may prevent compression from succeeding. Files are processed sequentially.
+
+With `--notify`, desktop notifications show progress for the current pass about
+every two seconds and the output path on completion. A notification service must
+be running in your desktop session. Messages are also written to stderr.
+Press Ctrl+C to interrupt a terminal run; forced termination may leave a
+`.discordify-*` temporary directory beside the input file.
+
+### Language
+
+The Dolphin menu supports English and Russian. Application messages, errors,
+help, and notifications use Russian for a Russian locale and English otherwise.
+Locale selection follows the first nonempty value of `LC_ALL`, `LC_MESSAGES`,
+and `LANG`, in that order. To force English for a terminal run:
+
+```sh
+LC_ALL=C discordify --notify -- video.mkv
+```
+
+## Development and checks
 
 ```sh
 nix develop path:.
@@ -133,11 +156,11 @@ cargo build --offline
 cargo test --offline
 ```
 
-Dev shell также включает `rust-analyzer` и задаёт `RUST_SRC_PATH` для исходников
-стандартной библиотеки. Запускайте редактор из `nix develop path:.`, чтобы его
-Rust language server получил это окружение. После изменения flake выйдите из
-старого dev shell, войдите снова и перезапустите редактор или language server.
+The development shell includes `rust-analyzer` and sets `RUST_SRC_PATH` to the
+Rust standard library sources. Start your editor from `nix develop path:.` so
+its language server inherits this environment. After changing the flake,
+re-enter the shell and restart your editor or language server.
 
-Интеграционные тесты используют настоящий FFmpeg: проверяют размер изображения
-и видео, сохранение звука/длительности, оригиналов и уже существующих результатов,
-имена со спецсимволами, маленькие и повреждённые файлы.
+Integration tests use real FFmpeg to check image/video size limits, the default
+10 MB limit, audio and duration preservation, originals and existing outputs,
+filenames with special characters, small files, invalid media, and locale selection.
