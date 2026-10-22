@@ -1,0 +1,10 @@
+[package]
+name = "discordify"
+version = "0.1.0"
+edition = "2021"
+description = "Prepare images and videos for Discord from Dolphin"
+license = "MIT"
+
+[profile.release]
+strip = true
+lto = true

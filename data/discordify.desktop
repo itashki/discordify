@@ -1,0 +1,31 @@
+[Desktop Entry]
+Type=Service
+MimeType=image/*;video/*;
+Actions=prepare20;prepare10;prepare50;prepare500;
+X-KDE-Submenu=Prepare for Discord
+X-KDE-Submenu[ru]=Подготовить для Discord
+Icon=discord
+
+[Desktop Action prepare20]
+Name=Up to 20 MB
+Name[ru]=До 20 МБ
+Icon=discord
+Exec=@EXEC@ --notify --limit-mb 20 -- %F
+
+[Desktop Action prepare10]
+Name=Up to 10 MB
+Name[ru]=До 10 МБ
+Icon=discord
+Exec=@EXEC@ --notify --limit-mb 10 -- %F
+
+[Desktop Action prepare50]
+Name=Up to 50 MB
+Name[ru]=До 50 МБ
+Icon=discord
+Exec=@EXEC@ --notify --limit-mb 50 -- %F
+
+[Desktop Action prepare500]
+Name=Up to 500 MB
+Name[ru]=До 500 МБ
+Icon=discord
+Exec=@EXEC@ --notify --limit-mb 500 -- %F
