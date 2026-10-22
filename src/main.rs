@@ -144,7 +144,7 @@ fn process(path: &Path, limit: u64, notice: &mut Notifications) -> Result<PathBu
 }
 
 fn main() {
-    let mut limit = 20.;
+    let mut limit = 10.;
     let mut files = Vec::new();
     let mut notice = Notifications::default();
     let mut args = env::args_os().skip(1);
@@ -155,7 +155,7 @@ fn main() {
         else if !positional && arg == "--limit-mb" {
             limit = args.next().and_then(|v| v.to_str().and_then(|s| s.parse::<f64>().ok())).filter(|n| n.is_finite() && *n >= 0.001 && *n <= 100000.).unwrap_or_else(|| { eprintln!("Некорректный лимит МБ"); std::process::exit(2) });
         } else if !positional && (arg == "--help" || arg == "-h") {
-            println!("discordify [--notify] [--limit-mb 20] -- FILE...\nЛимит в десятичных МБ. Оригиналы сохраняются; результат рядом с исходным файлом."); return;
+            println!("discordify [--notify] [--limit-mb 10] -- FILE...\nПо умолчанию лимит 10 десятичных МБ. Оригиналы сохраняются; результат рядом с исходным файлом."); return;
         } else if !positional && arg.to_string_lossy().starts_with('-') {
             eprintln!("Неизвестный параметр: {}", arg.to_string_lossy()); std::process::exit(2);
         } else { files.push(PathBuf::from(arg)); }

@@ -22,6 +22,17 @@ impl Fixture {
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
 
 #[test]
+fn default_limit_compresses_files_over_ten_mb() {
+    let f = Fixture::new("default-limit");
+    let input = f.generate("large.bmp", &["-f", "lavfi", "-i", "testsrc=size=2048x2048", "-frames:v", "1"]);
+    assert!(fs::metadata(&input).unwrap().len() > 10_000_000);
+    let result = Command::new(env!("CARGO_BIN_EXE_discordify"))
+        .arg("--").arg(&input).output().unwrap();
+    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    assert!(fs::metadata(f.0.join("large.discord.webp")).unwrap().len() <= 10_000_000);
+}
+
+#[test]
 fn image_compression_preserves_original_and_existing_output() {
     let f = Fixture::new("image");
     let input = f.generate("picture ; $ special.bmp", &["-f", "lavfi", "-i", "testsrc=size=512x512", "-frames:v", "1"]);

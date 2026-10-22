@@ -9,7 +9,7 @@
 
 ```sh
 nix build github:itashki/discordify
-nix run github:itashki/discordify -- --limit-mb 20 -- /path/to/video.mkv
+nix run github:itashki/discordify -- -- /path/to/video.mkv
 ```
 
 Nix скачивает исходники автоматически; клонировать репозиторий вручную не нужно.
@@ -85,8 +85,7 @@ sudo nixos-rebuild switch --flake .#my-host
 ```
 
 После применения конфигурации перезапустите Dolphin. В контекстном меню
-изображения/видео появится «Подготовить для Discord» с лимитами 10, 20, 50,
-500 МБ. При необходимости включите меню в настройках Dolphin → Контекстное меню.
+изображения/видео появится «Подготовить для Discord»: один пункт, который сжимает файлы до 10 МБ. При необходимости включите меню в настройках Dolphin → Контекстное меню.
 Для Home Manager каталог `~/.nix-profile/share` должен входить в `XDG_DATA_DIRS`
 сеанса KDE. Если меню не обнаруживается, можно установить локальную копию:
 
@@ -102,10 +101,10 @@ chmod +x ~/.local/share/kio/servicemenus/discordify.desktop
 ## Использование
 
 ```sh
-discordify --notify --limit-mb 20 -- video.mkv image.png
+discordify --notify -- video.mkv image.png
 ```
 
-По умолчанию лимит 20 десятичных МБ (с небольшим запасом относительно 20 MiB).
+По умолчанию лимит 10 десятичных МБ (10 000 000 байт).
 Лимиты Discord могут меняться и зависеть от подписки/сервера:
 [справка Discord](https://support.discord.com/hc/en-us/articles/25444343291031-File-Attachments-FAQ).
 Параметр `--limit-mb` принимает также дробные значения.
